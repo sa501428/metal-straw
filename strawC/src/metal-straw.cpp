@@ -1086,6 +1086,54 @@ vector<contactRecord> getBlockRecords(HiCFile *hiCFile, long origRegionIndices[4
     return blocksRecords->getRecords(hiCFile, regionIndices, origRegionIndices, footer);
 }
 
+footerInfo getNormalizationInfoForRegion(string fname, string chr1, string chr2,
+                                         const string &matrixType, const string &norm,
+                                         const string &unit, int binsize) {
+
+    HiCFile *hiCFile = new HiCFile(std::move(fname));
+    MatrixZoomData *mzd = getMatrixZoomData(hiCFile, chr1, chr2, std::move(matrixType), std::move(norm), unit,
+                                            binsize);
+    footerInfo footer = footerInfo();
+    footer.resolution = mzd->resolution;
+    footer.foundFooter = mzd->foundFooter;
+    footer.c1 = mzd->c1;
+    footer.c2 = mzd->c2;
+    footer.numBins1 = mzd->numBins1;
+    footer.numBins2 = mzd->numBins2;
+    footer.myFilePos = mzd->myFilePos;
+    footer.unit = mzd->unit;
+    footer.norm = mzd->norm;
+    footer.matrixType = mzd->matrixType;
+    footer.c1Norm = mzd->c1Norm;
+    footer.c2Norm = mzd->c2Norm;
+    footer.expectedValues = mzd->expectedValues;
+    return footer;
+}
+
+vector<contactRecord>
+getBlockRecordsWithNormalization(string fname, long *origRegionIndices, int resolution, bool foundFooter, int c1,
+                                 int c2,
+                                 int numBins1, int numBins2, long myFilePos, string unit, string norm,
+                                 string matrixType,
+                                 vector<double> c1Norm, vector<double> c2Norm, vector<double> expectedValues) {
+    HiCFile *hiCFile = new HiCFile(std::move(fname));
+    footerInfo footer = footerInfo();
+    footer.resolution = resolution;
+    footer.foundFooter = foundFooter;
+    footer.c1 = c1;
+    footer.c2 = c2;
+    footer.numBins1 = numBins1;
+    footer.numBins2 = numBins2;
+    footer.myFilePos = myFilePos;
+    footer.unit = unit;
+    footer.norm = norm;
+    footer.matrixType = matrixType;
+    footer.c1Norm = c1Norm;
+    footer.c2Norm = c2Norm;
+    footer.expectedValues = expectedValues;
+    return getBlockRecords(hiCFile, origRegionIndices, footer);
+}
+
 vector<contactRecord>
 straw(string matrixType, string norm, string fname, string chr1loc, string chr2loc, const string &unit, int binsize) {
     if (!(unit == "BP" || unit == "FRAG")) {
@@ -1119,26 +1167,12 @@ straw(string matrixType, string norm, string fname, string chr1loc, string chr2l
         origRegionIndices[3] = c2pos2;
     }
 
-    MatrixZoomData *mzd = getMatrixZoomData(hiCFile, chr1, chr2, std::move(matrixType), std::move(norm), unit,
-                                            binsize);
+    footerInfo footer = getNormalizationInfoForRegion(fname, chr1, chr2, matrixType, norm, unit, binsize);
 
-
-    footerInfo footer = footerInfo();
-    footer.resolution = mzd->resolution;
-    footer.foundFooter = mzd->foundFooter;
-    footer.c1 = mzd->c1;
-    footer.c2 = mzd->c2;
-    footer.numBins1 = mzd->numBins1;
-    footer.numBins2 = mzd->numBins2;
-    footer.myFilePos = mzd->myFilePos;
-    footer.unit = mzd->unit;
-    footer.norm = mzd->norm;
-    footer.matrixType = mzd->matrixType;
-    footer.c1Norm = mzd->c1Norm;
-    footer.c2Norm = mzd->c2Norm;
-    footer.expectedValues = mzd->expectedValues;
-
-    return getBlockRecords(hiCFile, origRegionIndices, footer);
+    return getBlockRecordsWithNormalization(fname, origRegionIndices, footer.resolution, footer.foundFooter,
+                                            footer.c1, footer.c2, footer.numBins1, footer.numBins2,
+                                            footer.myFilePos, footer.unit, footer.norm, footer.matrixType,
+                                            footer.c1Norm, footer.c2Norm, footer.expectedValues);
 }
 
 int main(int argc, char *argv[]) {
@@ -1175,46 +1209,34 @@ int main(int argc, char *argv[]) {
 namespace py = pybind11;
 
 PYBIND11_MODULE(strawC, m) {
-  m.doc() = R"pbdoc(
-        New straw with pybind
-        -----------------------
+  m.doc() = "Fast hybrid tool for reading .hic files";
 
-        .. currentmodule:: straw
-
-        .. autosummary::
-           :toctree: _generate
-
-           straw
-Straw enables programmatic access to .hic files.
-.hic files store the contact matrices from Hi-C experiments and the
-normalization and expected vectors, along with meta-data in the header.
-The main function, straw, takes in the normalization, the filename or URL,
-chromosome1 (and optional range), chromosome2 (and optional range),
-whether the bins desired are fragment or base pair delimited, and bin size.
-It then reads the header, follows the various pointers to the desired matrix
-and normalization vector, and stores as [x, y, count]
-Usage: straw <NONE/VC/VC_SQRT/KR> <hicFile(s)> <chr1>[:x1:x2] <chr2>[:y1:y2] <BP/FRAG> <binsize>
-
-Example:
->>>import strawC
->>>result = strawC.strawC('NONE', 'HIC001.hic', 'X', 'X', 'BP', 1000000)
->>>for i in range(len(result)):
-...   print("{0}\t{1}\t{2}".format(result[i].binX, result[i].binY, result[i].counts))
-See https://github.com/theaidenlab/straw/wiki/Python for more documentation
-    )pbdoc";
-
-  m.def("strawC", &straw, R"pbdoc(
-        Straw: fast C++ implementation of dump.
-
-        Bound with pybind
-Usage: straw <NONE/VC/VC_SQRT/KR> <hicFile(s)> <chr1>[:x1:x2] <chr2>[:y1:y2] <BP/FRAG> <binsize>
-    )pbdoc");
+  m.def("strawC", &straw, "get contact records");
+  m.def("getRecords", &getBlockRecordsWithNormalization, "get contact records using normalization info");
+  m.def("getNormExpVectors", &getNormalizationInfoForRegion, "get normalization or expected vectors");
 
   py::class_<contactRecord>(m, "contactRecord")
     .def(py::init<>())
     .def_readwrite("binX", &contactRecord::binX)
     .def_readwrite("binY", &contactRecord::binY)
     .def_readwrite("counts", &contactRecord::counts)
+    ;
+
+  py::class_<footerInfo>(m, "footerInfo")
+    .def(py::init<>())
+    .def_readwrite("resolution", &contactRecord::resolution)
+    .def_readwrite("foundFooter", &contactRecord::foundFooter)
+    .def_readwrite("c1", &contactRecord::c1)
+    .def_readwrite("c2", &contactRecord::c2)
+    .def_readwrite("numBins1", &contactRecord::numBins1)
+    .def_readwrite("numBins2", &contactRecord::numBins2)
+    .def_readwrite("myFilePos", &contactRecord::myFilePos)
+    .def_readwrite("unit", &contactRecord::unit)
+    .def_readwrite("norm", &contactRecord::norm)
+    .def_readwrite("matrixType", &contactRecord::matrixType)
+    .def_readwrite("c1Norm", &contactRecord::c1Norm)
+    .def_readwrite("c2Norm", &contactRecord::c2Norm)
+    .def_readwrite("expectedValues", &contactRecord::expectedValues)
     ;
 
 #ifdef VERSION_INFO
