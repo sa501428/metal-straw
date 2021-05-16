@@ -33,6 +33,9 @@
 #include <curl/curl.h>
 #include "zlib.h"
 #include "metal-straw.h"
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+
 using namespace std;
 
 /*
@@ -1205,44 +1208,52 @@ int main(int argc, char *argv[]) {
     }
 }
 
-/*
+
 namespace py = pybind11;
 
-PYBIND11_MODULE(strawC, m) {
-  m.doc() = "Fast hybrid tool for reading .hic files";
+PYBIND11_MODULE(metalStrawC, m
+) {
+m.
 
-  m.def("strawC", &straw, "get contact records");
-  m.def("getRecords", &getBlockRecordsWithNormalization, "get contact records using normalization info");
-  m.def("getNormExpVectors", &getNormalizationInfoForRegion, "get normalization or expected vectors");
+doc() = "Fast hybrid tool for reading .hic files";
 
-  py::class_<contactRecord>(m, "contactRecord")
-    .def(py::init<>())
-    .def_readwrite("binX", &contactRecord::binX)
-    .def_readwrite("binY", &contactRecord::binY)
-    .def_readwrite("counts", &contactRecord::counts)
-    ;
+m.def("straw", &straw, "get contact records");
+m.def("getRecords", &getBlockRecordsWithNormalization, "get contact records using normalization info");
+m.def("getNormExpVectors", &getNormalizationInfoForRegion, "get normalization or expected vectors");
 
-  py::class_<footerInfo>(m, "footerInfo")
-    .def(py::init<>())
-    .def_readwrite("resolution", &contactRecord::resolution)
-    .def_readwrite("foundFooter", &contactRecord::foundFooter)
-    .def_readwrite("c1", &contactRecord::c1)
-    .def_readwrite("c2", &contactRecord::c2)
-    .def_readwrite("numBins1", &contactRecord::numBins1)
-    .def_readwrite("numBins2", &contactRecord::numBins2)
-    .def_readwrite("myFilePos", &contactRecord::myFilePos)
-    .def_readwrite("unit", &contactRecord::unit)
-    .def_readwrite("norm", &contactRecord::norm)
-    .def_readwrite("matrixType", &contactRecord::matrixType)
-    .def_readwrite("c1Norm", &contactRecord::c1Norm)
-    .def_readwrite("c2Norm", &contactRecord::c2Norm)
-    .def_readwrite("expectedValues", &contactRecord::expectedValues)
-    ;
+py::class_<contactRecord>(m,
+"contactRecord")
+.
+
+def (py::init<>())
+
+.def_readwrite("binX", &contactRecord::binX)
+.def_readwrite("binY", &contactRecord::binY)
+.def_readwrite("counts", &contactRecord::counts);
+
+py::class_<footerInfo>(m,
+"footerInfo")
+.
+
+def (py::init<>())
+
+.def_readwrite("resolution", &footerInfo::resolution)
+.def_readwrite("foundFooter", &footerInfo::foundFooter)
+.def_readwrite("c1", &footerInfo::c1)
+.def_readwrite("c2", &footerInfo::c2)
+.def_readwrite("numBins1", &footerInfo::numBins1)
+.def_readwrite("numBins2", &footerInfo::numBins2)
+.def_readwrite("myFilePos", &footerInfo::myFilePos)
+.def_readwrite("unit", &footerInfo::unit)
+.def_readwrite("norm", &footerInfo::norm)
+.def_readwrite("matrixType", &footerInfo::matrixType)
+.def_readwrite("c1Norm", &footerInfo::c1Norm)
+.def_readwrite("c2Norm", &footerInfo::c2Norm)
+.def_readwrite("expectedValues", &footerInfo::expectedValues);
 
 #ifdef VERSION_INFO
-  m.attr("__version__") = VERSION_INFO;
+m.attr("__version__") = VERSION_INFO;
 #else
-  m.attr("__version__") = "dev";
+m.attr("__version__") = "dev";
 #endif
 }
-*/
