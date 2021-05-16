@@ -37,9 +37,25 @@ struct indexEntry {
 
 // sparse matrixType entry
 struct contactRecord {
-  int binX;
-  int binY;
+    int binX;
+    int binY;
     float counts;
+};
+
+struct footerInfo {
+    int resolution;
+    bool foundFooter;
+    int c1;
+    int c2;
+    int numBins1;
+    int numBins2;
+    long myFilePos;
+    std::string unit;
+    std::string norm;
+    std::string matrixType;
+    std::vector<double> c1Norm;
+    std::vector<double> c2Norm;
+    std::vector<double> expectedValues;
 };
 
 // chromosome

@@ -987,38 +987,45 @@ public:
     double avgCount;
     bool isIntra;
 
-    BlocksRecords(HiCFile *hiCFile, MatrixZoomData *footer) {
+    BlocksRecords(HiCFile *hiCFile, const footerInfo &footer) {
 
-        isIntra = footer->c1 == footer->c2;
+        isIntra = footer.c1 == footer.c2;
 
         if (hiCFile->isHttp) {
             // readMatrix will assign blockBinCount and blockColumnCount
-            blockMap = readMatrixHttp(hiCFile->curl, footer->myFilePos, footer->unit, footer->resolution, sumCounts,
+            blockMap = readMatrixHttp(hiCFile->curl, footer.myFilePos, footer.unit, footer.resolution, sumCounts,
                                       blockBinCount,
                                       blockColumnCount);
         } else {
             // readMatrix will assign blockBinCount and blockColumnCount
-            blockMap = readMatrix(hiCFile->fin, footer->myFilePos, footer->unit, footer->resolution, sumCounts,
+            blockMap = readMatrix(hiCFile->fin, footer.myFilePos, footer.unit, footer.resolution, sumCounts,
                                   blockBinCount,
                                   blockColumnCount);
         }
 
         if (!isIntra) {
-            avgCount = (sumCounts / footer->numBins1) / footer->numBins2;   // <= trying to avoid overflows
+            avgCount = (sumCounts / footer.numBins1) / footer.numBins2;   // <= trying to avoid overflows
         }
     }
 
-    vector<contactRecord>
-    getRecords(HiCFile *hiCFile, MatrixZoomData *footer, long regionIndices[4],
-               const long origRegionIndices[4]) {
+    set<int> getBlockNumbers(int version, bool isIntra, long *regionIndices, int blockBinCount, int blockColumnCount) {
         set<int> blockNumbers;
-        if (hiCFile->version > 8 && isIntra) {
+        if (version > 8 && isIntra) {
             blockNumbers = getBlockNumbersForRegionFromBinPositionV9Intra(regionIndices, blockBinCount,
                                                                           blockColumnCount);
         } else {
             blockNumbers = getBlockNumbersForRegionFromBinPosition(regionIndices, blockBinCount, blockColumnCount,
                                                                    isIntra);
         }
+        return blockNumbers;
+    }
+
+    vector<contactRecord>
+    getRecords(HiCFile *hiCFile, long regionIndices[4],
+               const long origRegionIndices[4], const footerInfo &footer) {
+
+        set<int> blockNumbers = getBlockNumbers(hiCFile->version, isIntra, regionIndices, blockBinCount,
+                                                blockColumnCount);
 
         vector<contactRecord> records;
         for (int blockNumber : blockNumbers) {
@@ -1028,8 +1035,8 @@ public:
             vector<contactRecord> tmp_records = readBlock(hiCFile->fin, hiCFile->curl, hiCFile->isHttp,
                                                           blockMap[blockNumber], hiCFile->version);
             for (contactRecord rec : tmp_records) {
-                long x = rec.binX * footer->resolution;
-                long y = rec.binY * footer->resolution;
+                long x = rec.binX * footer.resolution;
+                long y = rec.binY * footer.resolution;
 
                 if ((x >= origRegionIndices[0] && x <= origRegionIndices[1] &&
                      y >= origRegionIndices[2] && y <= origRegionIndices[3]) ||
@@ -1038,14 +1045,14 @@ public:
                      x <= origRegionIndices[3])) {
 
                     float c = rec.counts;
-                    if (footer->norm != "NONE") {
-                        c = static_cast<float>(c / (footer->c1Norm[rec.binX] * footer->c2Norm[rec.binY]));
+                    if (footer.norm != "NONE") {
+                        c = static_cast<float>(c / (footer.c1Norm[rec.binX] * footer.c2Norm[rec.binY]));
                     }
-                    if (footer->matrixType == "oe") {
+                    if (footer.matrixType == "oe") {
                         if (isIntra) {
-                            c = static_cast<float>(c / footer->expectedValues[min(footer->expectedValues.size() - 1,
-                                                                                  (size_t) floor(abs(y - x) /
-                                                                                                 footer->resolution))]);
+                            c = static_cast<float>(c / footer.expectedValues[min(footer.expectedValues.size() - 1,
+                                                                                 (size_t) floor(abs(y - x) /
+                                                                                                footer.resolution))]);
                         } else {
                             c = static_cast<float>(c / avgCount);
                         }
@@ -1063,20 +1070,20 @@ public:
     }
 };
 
-vector<contactRecord> getBlockRecords(HiCFile *hiCFile, MatrixZoomData *mzd, long origRegionIndices[4]) {
-    if (!mzd->foundFooter) {
+vector<contactRecord> getBlockRecords(HiCFile *hiCFile, long origRegionIndices[4], const footerInfo &footer) {
+    if (!footer.foundFooter) {
         vector<contactRecord> v;
         return v;
     }
 
     long regionIndices[4]; // used to find the blocks we need to access
-    regionIndices[0] = origRegionIndices[0] / mzd->resolution;
-    regionIndices[1] = origRegionIndices[1] / mzd->resolution;
-    regionIndices[2] = origRegionIndices[2] / mzd->resolution;
-    regionIndices[3] = origRegionIndices[3] / mzd->resolution;
+    regionIndices[0] = origRegionIndices[0] / footer.resolution;
+    regionIndices[1] = origRegionIndices[1] / footer.resolution;
+    regionIndices[2] = origRegionIndices[2] / footer.resolution;
+    regionIndices[3] = origRegionIndices[3] / footer.resolution;
 
-    BlocksRecords *blocksRecords = new BlocksRecords(hiCFile, mzd);
-    return blocksRecords->getRecords(hiCFile, mzd, regionIndices, origRegionIndices);
+    BlocksRecords *blocksRecords = new BlocksRecords(hiCFile, footer);
+    return blocksRecords->getRecords(hiCFile, regionIndices, origRegionIndices, footer);
 }
 
 vector<contactRecord>
@@ -1115,7 +1122,23 @@ straw(string matrixType, string norm, string fname, string chr1loc, string chr2l
     MatrixZoomData *mzd = getMatrixZoomData(hiCFile, chr1, chr2, std::move(matrixType), std::move(norm), unit,
                                             binsize);
 
-    return getBlockRecords(hiCFile, mzd, origRegionIndices);
+
+    footerInfo footer = footerInfo();
+    footer.resolution = mzd->resolution;
+    footer.foundFooter = mzd->foundFooter;
+    footer.c1 = mzd->c1;
+    footer.c2 = mzd->c2;
+    footer.numBins1 = mzd->numBins1;
+    footer.numBins2 = mzd->numBins2;
+    footer.myFilePos = mzd->myFilePos;
+    footer.unit = mzd->unit;
+    footer.norm = mzd->norm;
+    footer.matrixType = mzd->matrixType;
+    footer.c1Norm = mzd->c1Norm;
+    footer.c2Norm = mzd->c2Norm;
+    footer.expectedValues = mzd->expectedValues;
+
+    return getBlockRecords(hiCFile, origRegionIndices, footer);
 }
 
 int main(int argc, char *argv[]) {
