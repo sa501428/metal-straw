@@ -874,91 +874,92 @@ public:
         delete buffer;
         return cNorm;
     }
-
-    class MatrixZoomData {
-    public:
-        indexEntry c1NormEntry, c2NormEntry;
-        long myFilePos = 0L;
-        vector<double> expectedValues;
-        bool foundFooter = false;
-        vector<double> c1Norm;
-        vector<double> c2Norm;
-        int c1 = 0;
-        int c2 = 0;
-        string matrixType;
-        string norm;
-        string unit;
-        int resolution = 0;
-        int numBins1 = 0;
-        int numBins2 = 0;
-
-        MatrixZoomData(HiCFile *hiCFile, const chromosome &chrom1, const chromosome &chrom2, const string &matrixType,
-                       const string &norm, const string &unit, int resolution) {
-
-            int c01 = chrom1.index;
-            int c02 = chrom2.index;
-            if (c01 <= c02) { // default is ok
-                this->c1 = c01;
-                this->c2 = c02;
-                this->numBins1 = static_cast<int>(chrom1.length / resolution);
-                this->numBins2 = static_cast<int>(chrom2.length / resolution);
-            } else { // flip
-                this->c1 = c02;
-                this->c2 = c01;
-                this->numBins1 = static_cast<int>(chrom2.length / resolution);
-                this->numBins2 = static_cast<int>(chrom1.length / resolution);
-            }
-
-            this->matrixType = matrixType;
-            this->norm = norm;
-            this->unit = unit;
-            this->resolution = resolution;
-
-            if (hiCFile->isHttp) {
-                char *buffer2;
-                long bytes_to_read = totalFileSize - hiCFile->master;
-                buffer2 = getData(hiCFile->curl, hiCFile->master, bytes_to_read);
-                membuf sbuf2(buffer2, buffer2 + bytes_to_read);
-                istream bufin2(&sbuf2);
-                foundFooter = readFooter(bufin2, hiCFile->master, hiCFile->version, c1, c2, matrixType, norm, unit,
-                                         resolution,
-                                         myFilePos,
-                                         c1NormEntry, c2NormEntry, expectedValues);
-                delete buffer2;
-            } else {
-                hiCFile->fin.seekg(hiCFile->master, ios::beg);
-                foundFooter = readFooter(hiCFile->fin, hiCFile->master, hiCFile->version, c1, c2, matrixType, norm,
-                                         unit,
-                                         resolution, myFilePos,
-                                         c1NormEntry, c2NormEntry, expectedValues);
-            }
-
-            if (!foundFooter) {
-                return;
-            }
-
-            if (norm != "NONE") {
-                c1Norm = hiCFile->readNormalizationVectorFromFooter(c1NormEntry);
-                if (c1 == c2) {
-                    c2Norm = c1Norm;
-                } else {
-                    c2Norm = hiCFile->readNormalizationVectorFromFooter(c2NormEntry);
-                }
-            }
-        }
-    };
-
-    MatrixZoomData *getMatrixZoomData(const string &chr1, const string &chr2, string matrixType, string norm,
-                                      string unit, int resolution) {
-
-        chromosome chrom1 = chromosomeMap[chr1];
-        chromosome chrom2 = chromosomeMap[chr2];
-        return new MatrixZoomData(this, chrom1, chrom2, std::move(matrixType), std::move(norm), std::move(unit),
-                                  resolution);
-    }
 };
 
 long HiCFile::totalFileSize = 0L;
+
+class MatrixZoomData {
+public:
+    indexEntry c1NormEntry, c2NormEntry;
+    long myFilePos = 0L;
+    vector<double> expectedValues;
+    bool foundFooter = false;
+    vector<double> c1Norm;
+    vector<double> c2Norm;
+    int c1 = 0;
+    int c2 = 0;
+    string matrixType;
+    string norm;
+    string unit;
+    int resolution = 0;
+    int numBins1 = 0;
+    int numBins2 = 0;
+
+    MatrixZoomData(HiCFile *hiCFile, const chromosome &chrom1, const chromosome &chrom2, const string &matrixType,
+                   const string &norm, const string &unit, int resolution) {
+
+        int c01 = chrom1.index;
+        int c02 = chrom2.index;
+        if (c01 <= c02) { // default is ok
+            this->c1 = c01;
+            this->c2 = c02;
+            this->numBins1 = static_cast<int>(chrom1.length / resolution);
+            this->numBins2 = static_cast<int>(chrom2.length / resolution);
+        } else { // flip
+            this->c1 = c02;
+            this->c2 = c01;
+            this->numBins1 = static_cast<int>(chrom2.length / resolution);
+            this->numBins2 = static_cast<int>(chrom1.length / resolution);
+        }
+
+        this->matrixType = matrixType;
+        this->norm = norm;
+        this->unit = unit;
+        this->resolution = resolution;
+
+        if (hiCFile->isHttp) {
+            char *buffer2;
+            long bytes_to_read = hiCFile->totalFileSize - hiCFile->master;
+            buffer2 = getData(hiCFile->curl, hiCFile->master, bytes_to_read);
+            membuf sbuf2(buffer2, buffer2 + bytes_to_read);
+            istream bufin2(&sbuf2);
+            foundFooter = readFooter(bufin2, hiCFile->master, hiCFile->version, c1, c2, matrixType, norm, unit,
+                                     resolution,
+                                     myFilePos,
+                                     c1NormEntry, c2NormEntry, expectedValues);
+            delete buffer2;
+        } else {
+            hiCFile->fin.seekg(hiCFile->master, ios::beg);
+            foundFooter = readFooter(hiCFile->fin, hiCFile->master, hiCFile->version, c1, c2, matrixType, norm,
+                                     unit,
+                                     resolution, myFilePos,
+                                     c1NormEntry, c2NormEntry, expectedValues);
+        }
+
+        if (!foundFooter) {
+            return;
+        }
+
+        if (norm != "NONE") {
+            c1Norm = hiCFile->readNormalizationVectorFromFooter(c1NormEntry);
+            if (c1 == c2) {
+                c2Norm = c1Norm;
+            } else {
+                c2Norm = hiCFile->readNormalizationVectorFromFooter(c2NormEntry);
+            }
+        }
+    }
+};
+
+MatrixZoomData *
+getMatrixZoomData(HiCFile *hiCFile, const string &chr1, const string &chr2, string matrixType, string norm,
+                  string unit, int resolution) {
+
+    chromosome chrom1 = hiCFile->chromosomeMap[chr1];
+    chromosome chrom2 = hiCFile->chromosomeMap[chr2];
+    return new MatrixZoomData(hiCFile, chrom1, chrom2, std::move(matrixType), std::move(norm), std::move(unit),
+                              resolution);
+}
 
 void parsePositions(const string &chrLoc, string &chrom, long &pos1, long &pos2, map<string, chromosome> map) {
     string x, y;
@@ -986,7 +987,7 @@ public:
     double avgCount;
     bool isIntra;
 
-    BlocksRecords(HiCFile *hiCFile, HiCFile::MatrixZoomData *footer) {
+    BlocksRecords(HiCFile *hiCFile, MatrixZoomData *footer) {
 
         isIntra = footer->c1 == footer->c2;
 
@@ -1008,7 +1009,7 @@ public:
     }
 
     vector<contactRecord>
-    getRecords(HiCFile *hiCFile, HiCFile::MatrixZoomData *footer, long regionIndices[4],
+    getRecords(HiCFile *hiCFile, MatrixZoomData *footer, long regionIndices[4],
                const long origRegionIndices[4]) {
         set<int> blockNumbers;
         if (hiCFile->version > 8 && isIntra) {
@@ -1062,7 +1063,7 @@ public:
     }
 };
 
-vector<contactRecord> getBlockRecords(HiCFile *hiCFile, HiCFile::MatrixZoomData *mzd, long origRegionIndices[4]) {
+vector<contactRecord> getBlockRecords(HiCFile *hiCFile, MatrixZoomData *mzd, long origRegionIndices[4]) {
     if (!mzd->foundFooter) {
         vector<contactRecord> v;
         return v;
@@ -1111,8 +1112,8 @@ straw(string matrixType, string norm, string fname, string chr1loc, string chr2l
         origRegionIndices[3] = c2pos2;
     }
 
-    HiCFile::MatrixZoomData *mzd = hiCFile->getMatrixZoomData(chr1, chr2, std::move(matrixType), std::move(norm), unit,
-                                                              binsize);
+    MatrixZoomData *mzd = getMatrixZoomData(hiCFile, chr1, chr2, std::move(matrixType), std::move(norm), unit,
+                                            binsize);
 
     return getBlockRecords(hiCFile, mzd, origRegionIndices);
 }
