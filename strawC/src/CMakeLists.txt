@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 14)            # Enable c++14 standard
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -lcurl -lz")
 
 # Add main.cpp file of project root directory as source file
-set(SOURCE_FILES straw.cpp)
+set(SOURCE_FILES metal-straw.cpp)
 add_executable(straw ${SOURCE_FILES})
 
 target_link_libraries(straw curl z)
