@@ -45,6 +45,7 @@ struct contactRecord {
 struct footerInfo {
     int resolution;
     bool foundFooter;
+    int version;
     int c1;
     int c2;
     int numBins1;

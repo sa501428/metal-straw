@@ -787,6 +787,44 @@ vector<double> readNormalizationVector(istream &bufferin, int version) {
     return values;
 }
 
+class FileReader {
+public:
+    string prefix = "http"; // HTTP code
+    ifstream fin;
+    CURL *curl;
+    bool isHttp = false;
+
+    static CURL *initCURL(const char *url) {
+        CURL *curl = curl_easy_init();
+        if (curl) {
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+            curl_easy_setopt(curl, CURLOPT_URL, url);
+            curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+            curl_easy_setopt(curl, CURLOPT_USERAGENT, "straw");
+        }
+        return curl;
+    }
+
+    explicit FileReader(const string &fname) {
+
+        // read header into buffer; 100K should be sufficient
+        if (std::strncmp(fname.c_str(), prefix.c_str(), prefix.size()) == 0) {
+            isHttp = true;
+            curl = initCURL(fname.c_str());
+            if (!curl) {
+                cerr << "URL " << fname << " cannot be opened for reading" << endl;
+                exit(1);
+            }
+        } else {
+            fin.open(fname, fstream::in);
+            if (!fin) {
+                cerr << "File " << fname << " cannot be opened for reading" << endl;
+                exit(2);
+            }
+        }
+    }
+};
+
 class HiCFile {
 public:
     string prefix = "http"; // HTTP code
@@ -824,7 +862,6 @@ public:
         if (curl) {
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
             curl_easy_setopt(curl, CURLOPT_URL, url);
-            //curl_easy_setopt (curl, CURLOPT_VERBOSE, 1L);
             curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
             curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, hdf);
             curl_easy_setopt(curl, CURLOPT_USERAGENT, "straw");
@@ -989,18 +1026,18 @@ public:
     double avgCount;
     bool isIntra;
 
-    BlocksRecords(HiCFile *hiCFile, const footerInfo &footer) {
+    BlocksRecords(FileReader *fileReader, const footerInfo &footer) {
 
         isIntra = footer.c1 == footer.c2;
 
-        if (hiCFile->isHttp) {
+        if (fileReader->isHttp) {
             // readMatrix will assign blockBinCount and blockColumnCount
-            blockMap = readMatrixHttp(hiCFile->curl, footer.myFilePos, footer.unit, footer.resolution, sumCounts,
+            blockMap = readMatrixHttp(fileReader->curl, footer.myFilePos, footer.unit, footer.resolution, sumCounts,
                                       blockBinCount,
                                       blockColumnCount);
         } else {
             // readMatrix will assign blockBinCount and blockColumnCount
-            blockMap = readMatrix(hiCFile->fin, footer.myFilePos, footer.unit, footer.resolution, sumCounts,
+            blockMap = readMatrix(fileReader->fin, footer.myFilePos, footer.unit, footer.resolution, sumCounts,
                                   blockBinCount,
                                   blockColumnCount);
         }
@@ -1023,10 +1060,10 @@ public:
     }
 
     vector<contactRecord>
-    getRecords(HiCFile *hiCFile, long regionIndices[4],
+    getRecords(FileReader *fileReader, long regionIndices[4],
                const long origRegionIndices[4], const footerInfo &footer) {
 
-        set<int> blockNumbers = getBlockNumbers(hiCFile->version, isIntra, regionIndices, blockBinCount,
+        set<int> blockNumbers = getBlockNumbers(footer.version, isIntra, regionIndices, blockBinCount,
                                                 blockColumnCount);
 
         vector<contactRecord> records;
@@ -1034,8 +1071,8 @@ public:
             // get contacts in this block
             //cout << *it << " -- " << blockMap.size() << endl;
             //cout << blockMap[*it].size << " " <<  blockMap[*it].position << endl;
-            vector<contactRecord> tmp_records = readBlock(hiCFile->fin, hiCFile->curl, hiCFile->isHttp,
-                                                          blockMap[blockNumber], hiCFile->version);
+            vector<contactRecord> tmp_records = readBlock(fileReader->fin, fileReader->curl, fileReader->isHttp,
+                                                          blockMap[blockNumber], footer.version);
             for (contactRecord rec : tmp_records) {
                 long x = rec.binX * footer.resolution;
                 long y = rec.binY * footer.resolution;
@@ -1072,7 +1109,7 @@ public:
     }
 };
 
-vector<contactRecord> getBlockRecords(HiCFile *hiCFile, long origRegionIndices[4], const footerInfo &footer) {
+vector<contactRecord> getBlockRecords(FileReader *fileReader, long origRegionIndices[4], const footerInfo &footer) {
     if (!footer.foundFooter) {
         vector<contactRecord> v;
         return v;
@@ -1084,8 +1121,8 @@ vector<contactRecord> getBlockRecords(HiCFile *hiCFile, long origRegionIndices[4
     regionIndices[2] = origRegionIndices[2] / footer.resolution;
     regionIndices[3] = origRegionIndices[3] / footer.resolution;
 
-    BlocksRecords *blocksRecords = new BlocksRecords(hiCFile, footer);
-    return blocksRecords->getRecords(hiCFile, regionIndices, origRegionIndices, footer);
+    BlocksRecords *blocksRecords = new BlocksRecords(fileReader, footer);
+    return blocksRecords->getRecords(fileReader, regionIndices, origRegionIndices, footer);
 }
 
 footerInfo getNormalizationInfoForRegion(string fname, string chr1, string chr2,
@@ -1098,6 +1135,7 @@ footerInfo getNormalizationInfoForRegion(string fname, string chr1, string chr2,
     footerInfo footer = footerInfo();
     footer.resolution = mzd->resolution;
     footer.foundFooter = mzd->foundFooter;
+    footer.version = hiCFile->version;
     footer.c1 = mzd->c1;
     footer.c2 = mzd->c2;
     footer.numBins1 = mzd->numBins1;
@@ -1115,7 +1153,7 @@ footerInfo getNormalizationInfoForRegion(string fname, string chr1, string chr2,
 vector<contactRecord>
 getBlockRecordsWithNormalization(string fname,
                                  long c1pos1, long c1pos2, long c2pos1, long c2pos2,
-                                 int resolution, bool foundFooter, int c1, int c2,
+                                 int resolution, bool foundFooter, int version, int c1, int c2,
                                  int numBins1, int numBins2, long myFilePos, string unit, string norm,
                                  string matrixType,
                                  vector<double> c1Norm, vector<double> c2Norm, vector<double> expectedValues) {
@@ -1125,10 +1163,11 @@ getBlockRecordsWithNormalization(string fname,
     origRegionIndices[2] = c2pos1;
     origRegionIndices[3] = c2pos2;
 
-    HiCFile *hiCFile = new HiCFile(std::move(fname));
+    FileReader *fileReader = new FileReader(std::move(fname));
     footerInfo footer = footerInfo();
     footer.resolution = resolution;
     footer.foundFooter = foundFooter;
+    footer.version = version;
     footer.c1 = c1;
     footer.c2 = c2;
     footer.numBins1 = numBins1;
@@ -1140,7 +1179,7 @@ getBlockRecordsWithNormalization(string fname,
     footer.c1Norm = c1Norm;
     footer.c2Norm = c2Norm;
     footer.expectedValues = expectedValues;
-    return getBlockRecords(hiCFile, origRegionIndices, footer);
+    return getBlockRecords(fileReader, origRegionIndices, footer);
 }
 
 vector<contactRecord>
@@ -1181,7 +1220,7 @@ straw(string matrixType, string norm, string fname, string chr1loc, string chr2l
     return getBlockRecordsWithNormalization(fname,
                                             origRegionIndices[0], origRegionIndices[1],
                                             origRegionIndices[2], origRegionIndices[3],
-                                            footer.resolution, footer.foundFooter,
+                                            footer.resolution, footer.foundFooter, footer.version,
                                             footer.c1, footer.c2, footer.numBins1, footer.numBins2,
                                             footer.myFilePos, footer.unit, footer.norm, footer.matrixType,
                                             footer.c1Norm, footer.c2Norm, footer.expectedValues);
@@ -1238,6 +1277,7 @@ PYBIND11_MODULE(metalStrawC, m) {
     .def(py::init<>())
     .def_readwrite("resolution", &footerInfo::resolution)
     .def_readwrite("foundFooter", &footerInfo::foundFooter)
+    .def_readwrite("version", &footerInfo::version)
     .def_readwrite("c1", &footerInfo::c1)
     .def_readwrite("c2", &footerInfo::c2)
     .def_readwrite("numBins1", &footerInfo::numBins1)
