@@ -1113,11 +1113,18 @@ footerInfo getNormalizationInfoForRegion(string fname, string chr1, string chr2,
 }
 
 vector<contactRecord>
-getBlockRecordsWithNormalization(string fname, long *origRegionIndices, int resolution, bool foundFooter, int c1,
-                                 int c2,
+getBlockRecordsWithNormalization(string fname,
+                                 long c1pos1, long c1pos2, long c2pos1, long c2pos2,
+                                 int resolution, bool foundFooter, int c1, int c2,
                                  int numBins1, int numBins2, long myFilePos, string unit, string norm,
                                  string matrixType,
                                  vector<double> c1Norm, vector<double> c2Norm, vector<double> expectedValues) {
+    long origRegionIndices[4]; // as given by user
+    origRegionIndices[0] = c1pos1;
+    origRegionIndices[1] = c1pos2;
+    origRegionIndices[2] = c2pos1;
+    origRegionIndices[3] = c2pos2;
+
     HiCFile *hiCFile = new HiCFile(std::move(fname));
     footerInfo footer = footerInfo();
     footer.resolution = resolution;
@@ -1171,7 +1178,10 @@ straw(string matrixType, string norm, string fname, string chr1loc, string chr2l
 
     footerInfo footer = getNormalizationInfoForRegion(fname, chr1, chr2, matrixType, norm, unit, binsize);
 
-    return getBlockRecordsWithNormalization(fname, origRegionIndices, footer.resolution, footer.foundFooter,
+    return getBlockRecordsWithNormalization(fname,
+                                            origRegionIndices[0], origRegionIndices[1],
+                                            origRegionIndices[2], origRegionIndices[3],
+                                            footer.resolution, footer.foundFooter,
                                             footer.c1, footer.c2, footer.numBins1, footer.numBins2,
                                             footer.myFilePos, footer.unit, footer.norm, footer.matrixType,
                                             footer.c1Norm, footer.c2Norm, footer.expectedValues);
