@@ -39,12 +39,12 @@ using namespace std;
 
 /*
   Straw: fast C++ implementation of dump. Not as fully featured as the
-  Java version. Reads the .hic file, finds the appropriate matrixType and slice
+  Java version. Reads the .hic file, finds the appropriate matrix and slice
   of data, and outputs as text in sparse upper triangular format.
 
   Currently only supporting matrices.
 
-  Usage: straw <NONE/VC/VC_SQRT/KR/OE> <hicFile(s)> <chr1>[:x1:x2] <chr2>[:y1:y2] <BP/FRAG> <binsize>
+  Usage: straw <NONE/VC/VC_SQRT/KR> <hicFile(s)> <chr1>[:x1:x2] <chr2>[:y1:y2] <BP/FRAG> <binsize>
  */
 // this is for creating a stream from a byte array for ease of use
 struct membuf : std::streambuf {
@@ -198,7 +198,7 @@ map<string, chromosome> readHeader(istream &fin, long &masterIndexPosition, stri
 
 // reads the footer from the master pointer location. takes in the chromosomes,
 // norm, unit (BP or FRAG) and resolution or binsize, and sets the file
-// position of the matrixType and the normalization vectors for those chromosomes
+// position of the matrix and the normalization vectors for those chromosomes
 // at the given normalization and resolution
 bool readFooter(istream &fin, long master, int version, int c1, int c2, const string &matrixType, const string &norm,
                 const string &unit, int resolution, long &myFilePos, indexEntry &c1NormEntry, indexEntry &c2NormEntry,
@@ -384,8 +384,7 @@ bool readFooter(istream &fin, long master, int version, int c1, int c2, const st
     return true;
 }
 
-
-// reads the raw binned contact matrixType at specified resolution, setting the block bin count and block column count
+// reads the raw binned contact matrix at specified resolution, setting the block bin count and block column count
 map<int, indexEntry> readMatrixZoomData(istream &fin, const string &myunit, int mybinsize, float &mySumCounts,
                                         int &myBlockBinCount, int &myBlockColumnCount, bool &found) {
 
@@ -423,7 +422,7 @@ map<int, indexEntry> readMatrixZoomData(istream &fin, const string &myunit, int 
     return blockMap;
 }
 
-// reads the raw binned contact matrixType at specified resolution, setting the block bin count and block column count
+// reads the raw binned contact matrix at specified resolution, setting the block bin count and block column count
 map<int, indexEntry> readMatrixZoomDataHttp(CURL *curl, long &myFilePosition, const string &myunit, int mybinsize,
                                             float &mySumCounts, int &myBlockBinCount, int &myBlockColumnCount,
                                             bool &found) {
@@ -783,7 +782,6 @@ vector<double> readNormalizationVector(istream &bufferin, int version) {
         }
     }
 
-    //  if (allNaN) return null;
     return values;
 }
 
@@ -821,6 +819,14 @@ public:
                 cerr << "File " << fname << " cannot be opened for reading" << endl;
                 exit(2);
             }
+        }
+    }
+
+    void close(){
+        if(isHttp){
+            curl_easy_cleanup(curl);
+        } else {
+            fin.close();
         }
     }
 };
@@ -895,6 +901,14 @@ public:
             }
             chromosomeMap = readHeader(fin, master, genomeID, numChromosomes,
                                        version, nviPosition, nviLength);
+        }
+    }
+
+    void close(){
+        if(isHttp){
+            curl_easy_cleanup(curl);
+        } else {
+            fin.close();
         }
     }
 
@@ -1147,6 +1161,7 @@ footerInfo getNormalizationInfoForRegion(string fname, string chr1, string chr2,
     footer.c1Norm = mzd->c1Norm;
     footer.c2Norm = mzd->c2Norm;
     footer.expectedValues = mzd->expectedValues;
+    hiCFile->close();
     return footer;
 }
 
@@ -1179,7 +1194,9 @@ getBlockRecordsWithNormalization(string fname,
     footer.c1Norm = c1Norm;
     footer.c2Norm = c2Norm;
     footer.expectedValues = expectedValues;
-    return getBlockRecords(fileReader, origRegionIndices, footer);
+    vector<contactRecord> v = getBlockRecords(fileReader, origRegionIndices, footer);
+    fileReader->close();
+    return v;
 }
 
 vector<contactRecord>
@@ -1214,6 +1231,7 @@ straw(string matrixType, string norm, string fname, string chr1loc, string chr2l
         origRegionIndices[2] = c2pos1;
         origRegionIndices[3] = c2pos2;
     }
+    hiCFile->close();
 
     footerInfo footer = getNormalizationInfoForRegion(fname, chr1, chr2, matrixType, norm, unit, binsize);
 
@@ -1234,6 +1252,7 @@ vector<chromosome> getChromosomes(string fname){
         chromosomes.push_back(static_cast<chromosome>(iter->second));
         iter++;
     }
+    hiCFile->close();
     return chromosomes;
 }
 
